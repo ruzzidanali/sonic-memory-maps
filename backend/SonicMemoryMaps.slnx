@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SonicMemoryMaps.API/SonicMemoryMaps.API.csproj" />
+    <Project Path="src/SonicMemoryMaps.Application/SonicMemoryMaps.Application.csproj" />
+    <Project Path="src/SonicMemoryMaps.Domain/SonicMemoryMaps.Domain.csproj" />
+    <Project Path="src/SonicMemoryMaps.Infrastructure/SonicMemoryMaps.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SonicMemoryMaps.IntegrationTests/SonicMemoryMaps.IntegrationTests.csproj" />
+    <Project Path="tests/SonicMemoryMaps.UnitTests/SonicMemoryMaps.UnitTests.csproj" />
+  </Folder>
+</Solution>

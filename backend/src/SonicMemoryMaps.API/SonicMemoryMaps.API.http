@@ -1,0 +1,6 @@
+@SonicMemoryMaps.API_HostAddress = http://localhost:5109
+
+GET {{SonicMemoryMaps.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
