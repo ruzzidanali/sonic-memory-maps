@@ -33,7 +33,7 @@ public sealed class MemoryLikeConfiguration : IEntityTypeConfiguration<MemoryLik
             .ValueGeneratedOnAdd();
 
         entity.HasOne<Memory>()
-            .WithMany()
+            .WithMany(memory => memory.Likes)
             .HasForeignKey(x => x.MemoryId)
             .HasConstraintName("memory_likes_memory_id_fkey")
             .OnDelete(DeleteBehavior.Cascade);

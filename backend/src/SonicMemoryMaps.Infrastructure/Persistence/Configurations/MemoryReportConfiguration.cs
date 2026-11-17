@@ -1,11 +1,12 @@
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SonicMemoryMaps.Domain.Entities;
+using SonicMemoryMaps.Domain.Enums;
 
 namespace SonicMemoryMaps.Infrastructure.Persistence.Configurations;
 
-public sealed class MemoryReportConfiguration : IEntityTypeConfiguration<MemoryReport>
+public sealed class MemoryReportConfiguration
+    : IEntityTypeConfiguration<MemoryReport>
 {
     public void Configure(EntityTypeBuilder<MemoryReport> entity)
     {
@@ -47,8 +48,11 @@ public sealed class MemoryReportConfiguration : IEntityTypeConfiguration<MemoryR
 
         entity.Property(x => x.Status)
             .HasColumnName("status")
+            .HasConversion(
+                value => ToDatabase(value),
+                value => FromDatabase(value))
             .HasMaxLength(20)
-            .HasDefaultValue("pending")
+            .HasDefaultValueSql("'pending'")
             .IsRequired();
 
         entity.Property(x => x.CreatedAt)
@@ -85,5 +89,27 @@ public sealed class MemoryReportConfiguration : IEntityTypeConfiguration<MemoryR
                 x.CreatedAt
             })
             .HasDatabaseName("ix_memory_reports_status");
+    }
+
+    private static string ToDatabase(ReportStatus value)
+    {
+        return value switch
+        {
+            ReportStatus.Pending => "pending",
+            ReportStatus.Reviewed => "reviewed",
+            ReportStatus.Dismissed => "dismissed",
+            _ => throw new ArgumentOutOfRangeException(nameof(value))
+        };
+    }
+
+    private static ReportStatus FromDatabase(string value)
+    {
+        return value switch
+        {
+            "pending" => ReportStatus.Pending,
+            "reviewed" => ReportStatus.Reviewed,
+            "dismissed" => ReportStatus.Dismissed,
+            _ => throw new ArgumentOutOfRangeException(nameof(value))
+        };
     }
 }

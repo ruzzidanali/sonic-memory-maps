@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SonicMemoryMaps.Domain\SonicMemoryMaps.Domain.csproj" />
     <ProjectReference Include="..\..\src\SonicMemoryMaps.Application\SonicMemoryMaps.Application.csproj" />
+    <ProjectReference Include="..\..\src\SonicMemoryMaps.Infrastructure\SonicMemoryMaps.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

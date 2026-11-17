@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi;
 using SonicMemoryMaps.Application.Profiles;
 using SonicMemoryMaps.Infrastructure.Persistence.Repositories;
+using SonicMemoryMaps.Application.Memories;
+using SonicMemoryMaps.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -134,6 +136,33 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
+builder.Services.AddScoped<IMemoryRepository, MemoryRepository>();
+builder.Services.AddScoped<IMemoryService, MemoryService>();
+builder.Services.AddScoped<IAudioUploadService, AudioUploadService>();
+builder.Services.AddHttpClient<IAudioStorageService, SupabaseAudioStorageService>();
+
+builder.Services
+    .AddOptions<SupabaseOptions>()
+    .Bind(builder.Configuration.GetSection(SupabaseOptions.SectionName))
+    .Validate(
+        options => Uri.TryCreate(
+            options.Url,
+            UriKind.Absolute,
+            out var uri
+        ) && uri.Scheme == Uri.UriSchemeHttps,
+        "Supabase URL must be a valid absolute HTTPS URL.")
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.SecretKey),
+        "Supabase secret key is required.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<SupabaseStorageOptions>()
+    .Bind(builder.Configuration.GetSection(SupabaseStorageOptions.SectionName))
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.Bucket),
+        "Supabase storage bucket is required.")
+    .ValidateOnStart();
 
 // --------------------------------------------------
 // Middleware pipeline
