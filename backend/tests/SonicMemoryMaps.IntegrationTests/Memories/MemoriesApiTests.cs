@@ -462,6 +462,113 @@ public sealed class MemoriesApiTests(
 
 
     [Fact]
+    public async Task GetMemoryPlayback_WithoutToken_ReturnsUnauthorized()
+    {
+        var memoryId = Guid.NewGuid();
+
+        var initialRepositoryCallCount =
+            factory.MemoryAccessRepository.GetCallCount;
+
+        var initialDownloadCallCount =
+            factory.AudioStorageService.CreateDownloadAuthorizationCallCount;
+
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/api/memories/{memoryId}/audio");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        Assert.Equal(
+            initialRepositoryCallCount,
+            factory.MemoryAccessRepository.GetCallCount);
+
+        Assert.Equal(
+            initialDownloadCallCount,
+            factory.AudioStorageService.CreateDownloadAuthorizationCallCount);
+    }
+
+    [Fact]
+    public async Task GetMemoryPlayback_WhenAccessIsDenied_ReturnsNotFound()
+    {
+        var userId = Guid.NewGuid();
+        var memoryId = Guid.NewGuid();
+
+        factory.MemoryAccessRepository.MemoryToReturn = null;
+
+        var initialDownloadCallCount =
+            factory.AudioStorageService.CreateDownloadAuthorizationCallCount;
+
+        using var client = factory.CreateClient();
+
+        using var request = CreateAuthenticatedRequest(
+            HttpMethod.Get,
+            $"/api/memories/{memoryId}/audio",
+            userId);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        Assert.Equal(
+            initialDownloadCallCount,
+            factory.AudioStorageService.CreateDownloadAuthorizationCallCount);
+
+        Assert.Equal(memoryId, factory.MemoryAccessRepository.LastMemoryId);
+        Assert.Equal(userId, factory.MemoryAccessRepository.LastRequestingUserId);
+    }
+
+    [Fact]
+    public async Task GetMemoryPlayback_WithAuthorizedMemory_ReturnsPlaybackUrl()
+    {
+        var userId = Guid.NewGuid();
+
+        var memory = CreateMemory(
+            userId,
+            "Memory for playback",
+            DateTimeOffset.UtcNow);
+
+        factory.MemoryAccessRepository.MemoryToReturn = memory;
+
+        var initialDownloadCallCount =
+            factory.AudioStorageService.CreateDownloadAuthorizationCallCount;
+
+        using var client = factory.CreateClient();
+
+        using var request = CreateAuthenticatedRequest(
+            HttpMethod.Get,
+            $"/api/memories/{memory.Id}/audio",
+            userId);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var result = await response.Content
+            .ReadFromJsonAsync<MemoryPlaybackResponse>();
+
+        Assert.NotNull(result);
+
+        Assert.Equal(memory.Id, result.MemoryId);
+
+        Assert.Equal(
+            "https://test-project.supabase.co/storage/v1/object/sign/memory-audio/test-token",
+            result.PlaybackUrl);
+
+        Assert.True(result.ExpiresAt > DateTimeOffset.UtcNow);
+
+        Assert.Equal(
+            initialDownloadCallCount + 1,
+            factory.AudioStorageService.CreateDownloadAuthorizationCallCount);
+
+        Assert.Equal(userId, factory.AudioStorageService.LastDownloadUserId);
+        Assert.Equal(memory.Id, factory.AudioStorageService.LastDownloadMemoryId);
+    }
+
+
+
+
+    [Fact]
     public async Task UpdateMemory_WithValidData_ReturnsUpdatedMemory()
     {
         var userId = Guid.NewGuid();
@@ -863,4 +970,9 @@ public sealed class MemoriesApiTests(
         ModerationStatus ModerationStatus,
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt);
+
+    private sealed record MemoryPlaybackResponse(
+    Guid MemoryId,
+    string PlaybackUrl,
+    DateTimeOffset ExpiresAt);
 }

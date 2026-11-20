@@ -16,6 +16,14 @@ public sealed class FakeAudioStorageService : IAudioStorageService
 
     public int GetMetadataCallCount { get; private set; }
 
+    public int CreateDownloadAuthorizationCallCount { get; private set; }
+
+    public Guid? LastDownloadUserId { get; private set; }
+
+    public Guid? LastDownloadMemoryId { get; private set; }
+
+    public string? LastDownloadContentType { get; private set; }
+
     public Task<AudioUploadAuthorization> CreateUploadAuthorizationAsync(
         Guid userId,
         Guid memoryId,
@@ -55,5 +63,37 @@ public sealed class FakeAudioStorageService : IAudioStorageService
         GetMetadataCallCount++;
 
         return Task.FromResult(Metadata);
+    }
+
+    public Task<AudioDownloadAuthorization> CreateDownloadAuthorizationAsync(
+    Guid userId,
+    Guid memoryId,
+    string contentType,
+    CancellationToken cancellationToken = default)
+    {
+        CreateDownloadAuthorizationCallCount++;
+
+        LastDownloadUserId = userId;
+        LastDownloadMemoryId = memoryId;
+
+        return Task.FromResult(
+            new AudioDownloadAuthorization(
+                "https://test-project.supabase.co/storage/v1/object/sign/memory-audio/test-token",
+                DateTimeOffset.UtcNow.AddMinutes(5)));
+    }
+
+    public void Reset()
+    {
+        CreateAuthorizationCallCount = 0;
+        LastUserId = null;
+        LastMemoryId = null;
+        LastContentType = null;
+
+        Metadata = null;
+        GetMetadataCallCount = 0;
+
+        CreateDownloadAuthorizationCallCount = 0;
+        LastDownloadUserId = null;
+        LastDownloadMemoryId = null;
     }
 }

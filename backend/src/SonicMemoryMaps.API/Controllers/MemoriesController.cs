@@ -12,7 +12,8 @@ namespace SonicMemoryMaps.API.Controllers;
 [Route("api/memories")]
 [Authorize]
 public sealed class MemoriesController(
-    IMemoryService memoryService) : ControllerBase
+    IMemoryService memoryService,
+    IMemoryPlaybackService memoryPlaybackService) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType<MemoryResponse>(StatusCodes.Status201Created)]
@@ -92,6 +93,45 @@ public sealed class MemoriesController(
         }
 
         return Ok(MapResponse(result.Data!));
+    }
+
+    [HttpGet("{id:guid}/audio")]
+    [ProducesResponseType<MemoryPlaybackResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetMemoryPlayback(
+    Guid id,
+    CancellationToken cancellationToken)
+    {
+        var result = await memoryPlaybackService.CreatePlaybackAuthorizationAsync(
+            id,
+            cancellationToken);
+
+        if (result.Status != MemoryPlaybackServiceStatus.Success)
+        {
+            return result.Status switch
+            {
+                MemoryPlaybackServiceStatus.Unauthorized =>
+                    Unauthorized(),
+
+                MemoryPlaybackServiceStatus.NotFound =>
+                    NotFound(new ProblemDetails
+                    {
+                        Title = "Memory not found",
+                        Detail = "Memory not found or access is denied.",
+                        Status = StatusCodes.Status404NotFound
+                    }),
+
+                _ => StatusCode(StatusCodes.Status500InternalServerError)
+            };
+        }
+
+        var response = new MemoryPlaybackResponse(
+            result.Data!.MemoryId,
+            result.Data.PlaybackUrl,
+            result.Data.ExpiresAt);
+
+        return Ok(response);
     }
 
     [HttpPut("{id:guid}")]

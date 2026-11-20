@@ -137,8 +137,10 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<IMemoryRepository, MemoryRepository>();
+builder.Services.AddScoped<IMemoryAccessRepository, MemoryAccessRepository>();
 builder.Services.AddScoped<IMemoryService, MemoryService>();
 builder.Services.AddScoped<IAudioUploadService, AudioUploadService>();
+builder.Services.AddScoped<IMemoryPlaybackService, MemoryPlaybackService>();
 builder.Services.AddHttpClient<IAudioStorageService, SupabaseAudioStorageService>();
 
 builder.Services

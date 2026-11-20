@@ -144,5 +144,17 @@ public sealed class AudioUploadServiceTests
         {
             return Task.FromResult<AudioObjectMetadata?>(null);
         }
+
+        public Task<AudioDownloadAuthorization> CreateDownloadAuthorizationAsync(
+            Guid userId,
+            Guid memoryId,
+            string contentType,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                new AudioDownloadAuthorization(
+                    "https://test-project.supabase.co/storage/v1/object/sign/test",
+                    DateTimeOffset.UtcNow.AddMinutes(5)));
+        }
     }
 }

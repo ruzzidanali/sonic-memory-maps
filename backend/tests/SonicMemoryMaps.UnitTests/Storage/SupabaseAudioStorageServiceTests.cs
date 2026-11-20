@@ -281,6 +281,265 @@ public sealed class SupabaseAudioStorageServiceTests
     }
 
     [Fact]
+    public async Task CreateDownloadAuthorizationAsync_ReturnsDownloadAuthorization()
+    {
+        // Arrange
+        var expectedPath = $"{UserId:D}/{MemoryId:D}.mp3";
+
+        var handler = new FakeHttpMessageHandler(async (request, _) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+
+            Assert.Equal(
+                $"{SupabaseUrl}/storage/v1/object/sign/{Bucket}/{expectedPath}",
+                request.RequestUri!.ToString());
+
+            Assert.Equal(
+                SecretKey,
+                request.Headers.GetValues("apikey").Single());
+
+            var requestBody = await request.Content!.ReadAsStringAsync();
+
+            Assert.Contains("\"expiresIn\":300", requestBody);
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"signedURL":"/object/sign/{{Bucket}}/{{expectedPath}}?token=test-token"}""")
+            };
+        });
+
+        var service = CreateService(handler);
+
+        // Act
+        var result = await service.CreateDownloadAuthorizationAsync(
+            UserId,
+            MemoryId,
+            "audio/mpeg");
+
+        // Assert
+        Assert.Contains("token=test-token", result.DownloadUrl);
+
+        var downloadUri = new Uri(result.DownloadUrl);
+
+        Assert.Equal("https", downloadUri.Scheme);
+        Assert.Equal("test-project.supabase.co", downloadUri.Host);
+
+        Assert.InRange(
+            result.ExpiresAt,
+            DateTimeOffset.UtcNow.AddMinutes(4).AddSeconds(55),
+            DateTimeOffset.UtcNow.AddMinutes(5).AddSeconds(5));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsEmptyUserId()
+    {
+        var service = CreateService(new FakeHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException(
+                "HTTP request should not be sent.")));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                Guid.Empty,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsEmptyMemoryId()
+    {
+        var service = CreateService(new FakeHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException(
+                "HTTP request should not be sent.")));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                Guid.Empty,
+                "audio/mpeg"));
+    }
+
+    [Theory]
+    [InlineData("application/pdf")]
+    [InlineData("audio/flac")]
+    [InlineData("")]
+    public async Task CreateDownloadAuthorizationAsync_RejectsUnsupportedContentType(
+    string contentType)
+    {
+        var service = CreateService(new FakeHttpMessageHandler(
+            (_, _) => throw new InvalidOperationException(
+                "HTTP request should not be sent.")));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                contentType));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_ThrowsWhenSupabaseReturnsError()
+    {
+        // Arrange
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(
+                HttpStatusCode.InternalServerError)));
+
+        var service = CreateService(handler);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+
+        Assert.Contains("500", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsUnexpectedDownloadHost()
+    {
+        // Arrange
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"signedURL":"https://malicious.example/object/sign/test?token=abc"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsHttpDownloadUrl()
+    {
+        // Arrange
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"signedURL":"http://test-project.supabase.co/object/sign/test?token=abc"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsUnexpectedDownloadPath()
+    {
+        // Arrange
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"signedURL":"/object/sign/another-bucket/another-user/another-memory.mp3?token=abc"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsMissingToken()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"signedURL":"/object/sign/{{Bucket}}/{{UserId:D}}/{{MemoryId:D}}.mp3"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsDownloadUrlWithUserInfo()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"signedURL":"https://attacker@test-project.supabase.co/storage/v1/object/sign/{{Bucket}}/{{UserId:D}}/{{MemoryId:D}}.mp3?token=abc"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_RejectsDownloadUrlWithFragment()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"signedURL":"/object/sign/{{Bucket}}/{{UserId:D}}/{{MemoryId:D}}.mp3?token=abc#unexpected"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+
+    [Fact]
+    public async Task CreateDownloadAuthorizationAsync_ThrowsWhenResponseHasNoSignedUrl()
+    {
+        // Arrange
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"token":"test-token"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDownloadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
     public async Task GetObjectMetadataAsync_ReturnsObjectMetadata()
     {
         // Arrange

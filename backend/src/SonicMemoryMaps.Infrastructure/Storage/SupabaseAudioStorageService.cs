@@ -5,13 +5,15 @@ using System.Text.Json;
 using System.Net;
 using Microsoft.Extensions.Options;
 using SonicMemoryMaps.Application.Abstractions;
-
 namespace SonicMemoryMaps.Infrastructure.Storage;
 
 public sealed class SupabaseAudioStorageService : IAudioStorageService
 {
     private static readonly TimeSpan UploadUrlLifetime =
         TimeSpan.FromHours(2);
+
+    private static readonly TimeSpan DownloadUrlLifetime =
+    TimeSpan.FromMinutes(5);
 
     private static readonly IReadOnlyDictionary<string, string> AudioExtensions =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -150,6 +152,119 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
     }
 
 
+    public async Task<AudioDownloadAuthorization> CreateDownloadAuthorizationAsync(
+        Guid userId,
+        Guid memoryId,
+        string contentType,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("User ID is required.", nameof(userId));
+
+        if (memoryId == Guid.Empty)
+            throw new ArgumentException("Memory ID is required.", nameof(memoryId));
+
+        if (!AudioExtensions.TryGetValue(contentType, out var extension))
+        {
+            throw new ArgumentException(
+                "Unsupported audio content type.",
+                nameof(contentType));
+        }
+
+        var objectPath = $"{userId:D}/{memoryId:D}{extension}";
+
+        var encodedBucket = Uri.EscapeDataString(_storageOptions.Bucket);
+
+        var encodedPath = string.Join(
+            "/",
+            objectPath.Split('/').Select(Uri.EscapeDataString));
+
+        var storageBaseUrl =
+            $"{_supabaseOptions.Url.TrimEnd('/')}/storage/v1";
+
+        var requestUrl =
+            $"{storageBaseUrl}/object/sign/{encodedBucket}/{encodedPath}";
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            requestUrl);
+
+        request.Headers.Add("apikey", _supabaseOptions.SecretKey);
+
+        request.Content = new StringContent(
+            """{"expiresIn":300}""",
+            Encoding.UTF8,
+            "application/json");
+
+        var expiresAt = DateTimeOffset.UtcNow.Add(DownloadUrlLifetime);
+
+        using var response = await _httpClient.SendAsync(
+            request,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Supabase Storage failed to create a download URL. " +
+                $"HTTP status: {(int)response.StatusCode}.");
+        }
+
+        await using var responseStream =
+            await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        using var json = await JsonDocument.ParseAsync(
+            responseStream,
+            cancellationToken: cancellationToken);
+
+        if (!json.RootElement.TryGetProperty(
+            "signedURL",
+            out var urlElement))
+        {
+            throw new InvalidOperationException(
+                "Supabase Storage response did not contain a signed download URL.");
+        }
+
+        var returnedUrl = urlElement.GetString();
+
+        if (string.IsNullOrWhiteSpace(returnedUrl))
+        {
+            throw new InvalidOperationException(
+                "Supabase Storage returned an empty download URL.");
+        }
+
+        var storageBaseUri = new Uri(storageBaseUrl + "/");
+
+        var downloadUrl = new Uri(
+            storageBaseUri,
+            returnedUrl.TrimStart('/'));
+
+        var expectedDownloadPath =
+            $"{storageBaseUri.AbsolutePath.TrimEnd('/')}" +
+            $"/object/sign/{encodedBucket}/{encodedPath}";
+
+        if (downloadUrl.Scheme != Uri.UriSchemeHttps ||
+            !string.Equals(
+                downloadUrl.Host,
+                storageBaseUri.Host,
+                StringComparison.OrdinalIgnoreCase) ||
+            downloadUrl.Port != storageBaseUri.Port ||
+            !string.IsNullOrEmpty(downloadUrl.UserInfo) ||
+            !string.IsNullOrEmpty(downloadUrl.Fragment) ||
+            !string.Equals(
+                downloadUrl.AbsolutePath,
+                expectedDownloadPath,
+                StringComparison.Ordinal) ||
+            !HasValidDownloadToken(downloadUrl))
+        {
+            throw new InvalidOperationException(
+                "Supabase Storage returned an unexpected download URL.");
+        }
+
+        return new AudioDownloadAuthorization(
+            downloadUrl.ToString(),
+            expiresAt);
+    }
+
     public async Task<AudioObjectMetadata?> GetObjectMetadataAsync(
         Guid userId,
         Guid memoryId,
@@ -274,6 +389,23 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
             objectPath,
             actualContentType,
             sizeBytes);
+    }
+
+    private static bool HasValidDownloadToken(Uri downloadUrl)
+    {
+        var query = downloadUrl.Query.TrimStart('?');
+
+        return query
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Any(parameter =>
+            {
+                var parts = parameter.Split('=', 2);
+
+                return parts.Length == 2 &&
+                       Uri.UnescapeDataString(parts[0]) == "token" &&
+                       !string.IsNullOrWhiteSpace(
+                           Uri.UnescapeDataString(parts[1]));
+            });
     }
 
 }

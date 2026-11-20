@@ -15,23 +15,6 @@ public sealed class MemoryServiceTests
     Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     [Fact]
-    public async Task CreateMemoryAsync_WithValidCommand_ReturnsSuccess()
-    {
-        var repository = new FakeMemoryRepository();
-        var currentUser = new FakeCurrentUser(TestUserId, true);
-        var service = new MemoryService(
-    repository,
-    new FakeCurrentUser(TestUserId, true),
-    new FakeAudioStorageService());
-
-        var result = await service.CreateMemoryAsync(CreateValidCommand());
-
-        Assert.Equal(MemoryServiceStatus.Success, result.Status);
-        Assert.NotNull(result.Data);
-        Assert.Equal(1, repository.AddCallCount);
-    }
-
-    [Fact]
     public async Task CreateMemoryAsync_WithValidCommand_AssignsAuthenticatedUserAsOwner()
     {
         var repository = new FakeMemoryRepository();
@@ -790,6 +773,18 @@ public sealed class MemoryServiceTests
             MetadataCallCount++;
 
             return Task.FromResult(Metadata);
+        }
+
+        public Task<AudioDownloadAuthorization> CreateDownloadAuthorizationAsync(
+            Guid userId,
+            Guid memoryId,
+            string contentType,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                new AudioDownloadAuthorization(
+                    "https://test-project.supabase.co/storage/v1/object/sign/test",
+                    DateTimeOffset.UtcNow.AddMinutes(5)));
         }
     }
 

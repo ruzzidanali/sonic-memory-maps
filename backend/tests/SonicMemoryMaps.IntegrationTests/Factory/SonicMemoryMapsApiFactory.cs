@@ -22,12 +22,16 @@ public sealed class SonicMemoryMapsApiFactory
 
     private readonly InMemoryProfileRepository _profileRepository = new();
     private readonly InMemoryMemoryRepository _memoryRepository = new();
+    private readonly InMemoryMemoryAccessRepository _memoryAccessRepository = new();
     private readonly FakeAudioStorageService _audioStorageService = new();
     public InMemoryProfileRepository ProfileRepository =>
         _profileRepository;
 
     public InMemoryMemoryRepository MemoryRepository =>
     _memoryRepository;
+
+    public InMemoryMemoryAccessRepository MemoryAccessRepository =>
+    _memoryAccessRepository;
 
     public FakeAudioStorageService AudioStorageService =>
     _audioStorageService;
@@ -114,6 +118,10 @@ public sealed class SonicMemoryMapsApiFactory
 
             services.RemoveAll<IMemoryRepository>();
             services.AddSingleton<IMemoryRepository>(_memoryRepository);
+
+            services.RemoveAll<IMemoryAccessRepository>();
+            services.AddSingleton<IMemoryAccessRepository>(
+                _memoryAccessRepository);
 
             services.RemoveAll<IAudioStorageService>();
 
