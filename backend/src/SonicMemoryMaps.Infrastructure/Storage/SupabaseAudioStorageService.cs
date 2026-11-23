@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Net;
 using Microsoft.Extensions.Options;
 using SonicMemoryMaps.Application.Abstractions;
+
 namespace SonicMemoryMaps.Infrastructure.Storage;
 
 public sealed class SupabaseAudioStorageService : IAudioStorageService
@@ -13,7 +14,7 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
         TimeSpan.FromHours(2);
 
     private static readonly TimeSpan DownloadUrlLifetime =
-    TimeSpan.FromMinutes(5);
+        TimeSpan.FromMinutes(5);
 
     private static readonly IReadOnlyDictionary<string, string> AudioExtensions =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -118,7 +119,6 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
                 "Supabase Storage returned an empty upload URL.");
         }
 
-
         var storageBaseUri = new Uri(storageBaseUrl + "/");
 
         var uploadUrl = new Uri(
@@ -135,22 +135,23 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
                 storageBaseUri.Host,
                 StringComparison.OrdinalIgnoreCase) ||
             uploadUrl.Port != storageBaseUri.Port ||
+            !string.IsNullOrEmpty(uploadUrl.UserInfo) ||
+            !string.IsNullOrEmpty(uploadUrl.Fragment) ||
             !string.Equals(
                 uploadUrl.AbsolutePath,
                 expectedUploadPath,
-                StringComparison.Ordinal))
+                StringComparison.Ordinal) ||
+            !HasValidSignedUrlToken(uploadUrl))
         {
             throw new InvalidOperationException(
                 "Supabase Storage returned an unexpected upload URL.");
         }
-
 
         return new AudioUploadAuthorization(
             objectPath,
             uploadUrl.ToString(),
             DateTimeOffset.UtcNow.Add(UploadUrlLifetime));
     }
-
 
     public async Task<AudioDownloadAuthorization> CreateDownloadAuthorizationAsync(
         Guid userId,
@@ -254,7 +255,7 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
                 downloadUrl.AbsolutePath,
                 expectedDownloadPath,
                 StringComparison.Ordinal) ||
-            !HasValidDownloadToken(downloadUrl))
+            !HasValidSignedUrlToken(downloadUrl))
         {
             throw new InvalidOperationException(
                 "Supabase Storage returned an unexpected download URL.");
@@ -352,7 +353,6 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
                 "Supabase Storage returned an invalid object size.");
         }
 
-
         const long MaxAudioSizeBytes = 52_428_800;
 
         if (sizeBytes < 1 || sizeBytes > MaxAudioSizeBytes)
@@ -360,7 +360,6 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
             throw new InvalidOperationException(
                 "Supabase Storage returned an object with an invalid size.");
         }
-
 
         if (!metadataElement.TryGetProperty("mimetype", out var mimeElement))
         {
@@ -391,9 +390,9 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
             sizeBytes);
     }
 
-    private static bool HasValidDownloadToken(Uri downloadUrl)
+    private static bool HasValidSignedUrlToken(Uri signedUrl)
     {
-        var query = downloadUrl.Query.TrimStart('?');
+        var query = signedUrl.Query.TrimStart('?');
 
         return query
             .Split('&', StringSplitOptions.RemoveEmptyEntries)
@@ -407,5 +406,4 @@ public sealed class SupabaseAudioStorageService : IAudioStorageService
                            Uri.UnescapeDataString(parts[1]));
             });
     }
-
 }

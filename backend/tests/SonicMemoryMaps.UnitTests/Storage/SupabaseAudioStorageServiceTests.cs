@@ -263,6 +263,45 @@ public sealed class SupabaseAudioStorageServiceTests
     }
 
     [Fact]
+    public async Task CreateUploadAuthorizationAsync_RejectsMissingToken()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"url":"/object/upload/sign/{{Bucket}}/{{UserId:D}}/{{MemoryId:D}}.mp3"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateUploadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+    [Fact]
+    public async Task CreateUploadAuthorizationAsync_RejectsUploadUrlWithUserInfo()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"url":"https://attacker@test-project.supabase.co/storage/v1/object/upload/sign/{{Bucket}}/{{UserId:D}}/{{MemoryId:D}}.mp3?token=abc"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateUploadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
+
+    [Fact]
     public async Task CreateUploadAuthorizationAsync_RejectsEmptyUrl()
     {
         var handler = new FakeHttpMessageHandler((_, _) =>
@@ -874,6 +913,27 @@ public sealed class SupabaseAudioStorageServiceTests
                 MemoryId,
                 "audio/mpeg"));
     }
+
+
+    [Fact]
+    public async Task CreateUploadAuthorizationAsync_RejectsUploadUrlWithFragment()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"url":"/object/upload/sign/{{Bucket}}/{{UserId:D}}/{{MemoryId:D}}.mp3?token=abc#unexpected"}""")
+            }));
+
+        var service = CreateService(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateUploadAuthorizationAsync(
+                UserId,
+                MemoryId,
+                "audio/mpeg"));
+    }
+
 
     private sealed class FakeHttpMessageHandler(
         Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler)
